@@ -15,6 +15,7 @@ class MyPillow(QMainWindow):
 
         self.l_x, self.l_y = 37.620431, 55.753789
         self.z = 17
+        self.delta = 0.05
         self.server_address_map = 'https://static-maps.yandex.ru/v1?'
         self.api_key_map = 'f3a0fe3a-b07e-4840-a1da-06f18b2ddf13'
         self.map_request = f"{self.server_address_map}ll={self.l_x},{self.l_y}&apikey={self.api_key_map}&z={self.z}"
@@ -46,6 +47,20 @@ class MyPillow(QMainWindow):
         elif event.key() == Qt.Key.Key_PageDown:
             if self.z > 1:
                 self.z -= 1
+        elif event.key() == Qt.Key.Key_Left:
+            self.l_x -= self.delta * (22 - self.z)
+            if self.l_x < -180:
+                self.l_x += 360
+        elif event.key() == Qt.Key.Key_Right:
+            self.l_x += self.delta * (22 - self.z)
+            if self.l_x > 180:
+                self.l_x -= 360
+        elif event.key() == Qt.Key.Key_Up:
+            if self.l_y <= 84:
+                self.l_y += self.delta * (22 - self.z)
+        elif event.key() == Qt.Key.Key_Down:
+            if self.l_y >= -84:
+                self.l_y -= self.delta * (22 - self.z)
         self.show_map()
 
 
