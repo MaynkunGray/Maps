@@ -40,10 +40,10 @@ class MyPillow(QMainWindow):
         self.picture.setPixmap(QPixmap(map_file))
 
     def keyPressEvent(self, event):
-        if event.key() == Qt.Key.Key_Up:
+        if event.key() == Qt.Key.Key_PageUp:
             if self.z < 21:
                 self.z += 1
-        elif event.key() == Qt.Key.Key_Down:
+        elif event.key() == Qt.Key.Key_PageDown:
             if self.z > 1:
                 self.z -= 1
         self.show_map()
