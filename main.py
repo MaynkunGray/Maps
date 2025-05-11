@@ -33,12 +33,19 @@ class BigMaps(QMainWindow):
     def __init__(self):
         super().__init__()
 
-        self.setGeometry(500, 100, 620, 540)
+        self.setGeometry(500, 100, 620, 580)
         self.setWindowTitle('Maps')
 
         self.theme = QCheckBox(self)
         self.theme.setText('Темная тема')
         self.theme.move(10, 460)
+
+        self.mail_index = QCheckBox(self)
+        self.mail_index.setText('Почтовый индекс')
+        self.mail_index.resize(140, 30)
+        self.mail_index.move(140, 460)
+
+        self.index = ''
 
         self.search_data = QLineEdit(self)
         self.search_data.resize(305, 20)
@@ -55,6 +62,12 @@ class BigMaps(QMainWindow):
         self.clear_button.resize(200, 20)
         self.clear_button.move(410, 500)
 
+        self.adress = QLabel(self)
+        self.adress.setText('Адресс: ')
+        self.adress.setWordWrap(True)
+        self.adress.resize(600, 40)
+        self.adress.move(10, 530)
+
         self.lon, self.latt = 37.620431, 55.753789
         self.spn = [0.0014, 0.0014]
         self.pt = ''
@@ -69,6 +82,7 @@ class BigMaps(QMainWindow):
         self.show_map()
 
         self.theme.clicked.connect(self.show_map)
+        self.mail_index.clicked.connect(self.edit_adress)
         self.search_button.clicked.connect(self.search)
         self.search_data.returnPressed.connect(self.search)
         self.clear_button.clicked.connect(self.clear_search_data)
@@ -88,6 +102,13 @@ class BigMaps(QMainWindow):
 
         self.picture.setPixmap(QPixmap(self.map_file))
 
+    def edit_adress(self):
+        if self.mail_index.isChecked():
+            if self.index:
+                self.adress.setText(f'{self.adress.text()}{self.index}')
+        elif self.index:
+            self.adress.setText(','.join(self.adress.text().split(',')[:-1]))
+
     def search(self):
         toponym_to_find = self.search_data.text()
 
@@ -101,6 +122,12 @@ class BigMaps(QMainWindow):
         if response and response.json()["response"]["GeoObjectCollection"]["featureMember"]:
             json_response = response.json()
             toponym = json_response["response"]["GeoObjectCollection"]["featureMember"][0]["GeoObject"]
+            adress = toponym['metaDataProperty']['GeocoderMetaData']['text']
+            try:
+                self.index = ', ' + toponym['metaDataProperty']['GeocoderMetaData']['AddressDetails']['Country'][
+                    'AdministrativeArea']['Locality']['Thoroughfare']['Premise']['PostalCode']['PostalCodeNumber']
+            except Exception:
+                self.index = ''
             toponym_coodrinates = toponym["Point"]["pos"]
             toponym_longitude, toponym_lattitude = toponym_coodrinates.split(" ")
             self.lon = float(toponym_longitude)
@@ -108,15 +135,22 @@ class BigMaps(QMainWindow):
 
             self.spn = list(find_scale(json_response))
             self.pt = f'{self.lon},{self.latt}'
-
+            if self.mail_index.isChecked() and self.index:
+                self.adress.setText(f'Адресс: {adress}{self.index}')
+            else:
+                self.adress.setText(f'Адресс: {adress}')
             self.show_map()
+        else:
+            self.clear_search_data()
 
         self.search_data.clearFocus()
 
     def clear_search_data(self):
         self.search_data.clear()
         self.search_data.clearFocus()
+        self.adress.setText('Адресс: ')
         self.pt = ''
+        self.index = ''
         self.show_map()
 
     def keyPressEvent(self, event):
