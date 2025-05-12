@@ -76,8 +76,8 @@ class BigMaps(QMainWindow):
         self.map_file = "map.png"
 
         self.picture = QLabel(self)
-        self.picture.resize(620, 460)
-        self.picture.move(10, 0)
+        self.picture.resize(600, 450)
+        self.picture.move(10, 5)
 
         self.show_map()
 
@@ -187,6 +187,65 @@ class BigMaps(QMainWindow):
             self.show_map()
 
     def mousePressEvent(self, event):
+        self.search_data.clearFocus()
+        if event.button() == Qt.MouseButton.LeftButton:
+            if event.pos().x() <= 610 and event.pos().y() <= 455:
+                x = event.pos().x() - 10
+                y = event.pos().y() - 5
+                if x <= 100:
+                    koef_l = 4.53
+                elif x <= 200:
+                    koef_l = 4.6
+                elif x <= 300:
+                    koef_l = 4.65
+                elif x <= 400:
+                    koef_l = 4.64
+                elif x <= 500:
+                    koef_l = 4.63
+                else:
+                    koef_l = 4.63
+                if y <= 150:
+                    koef_u = 2.02
+                elif y <= 300:
+                    koef_u = 2
+                else:
+                    koef_u = 1.97
+                left_move = (x / 600) * self.spn[0] * koef_l
+                upper_move = (y / 450) * self.spn[1] * koef_u
+                lo = self.lon - self.spn[0] * 2.3
+                la = self.latt + self.spn[1]
+                self.pt = f'{lo + left_move},{la - upper_move}'
+                self.find_place()
+        elif event.button() == Qt.MouseButton.RightButton:
+            pass
+
+    def find_place(self):
+        toponym_to_find = self.pt
+
+        geocoder_params = {
+            "apikey": "8013b162-6b42-4997-9691-77b7074026e0",
+            "geocode": toponym_to_find,
+            "format": "json"}
+
+        response = requests.get(self.geocoder_api_server, params=geocoder_params)
+
+        if response and response.json()["response"]["GeoObjectCollection"]["featureMember"]:
+            json_response = response.json()
+            toponym = json_response["response"]["GeoObjectCollection"]["featureMember"][0]["GeoObject"]
+            adress = toponym['metaDataProperty']['GeocoderMetaData']['text']
+            try:
+                self.index = ', ' + toponym['metaDataProperty']['GeocoderMetaData']['AddressDetails']['Country'][
+                    'AdministrativeArea']['Locality']['Thoroughfare']['Premise']['PostalCode']['PostalCodeNumber']
+            except Exception:
+                self.index = ''
+            if self.mail_index.isChecked() and self.index:
+                self.adress.setText(f'Адресс: {adress}{self.index}')
+            else:
+                self.adress.setText(f'Адресс: {adress}')
+            self.show_map()
+        else:
+            self.clear_search_data()
+
         self.search_data.clearFocus()
 
     def closeEvent(self, event):
