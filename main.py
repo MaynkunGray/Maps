@@ -1,6 +1,8 @@
 import os
+import pprint
 import sys
 import requests
+from distance import lonlat_distance
 
 from PyQt6.QtGui import QPixmap
 from PyQt6.QtCore import Qt
@@ -33,7 +35,7 @@ class BigMaps(QMainWindow):
     def __init__(self):
         super().__init__()
 
-        self.setGeometry(500, 100, 620, 580)
+        self.setGeometry(500, 100, 620, 630)
         self.setWindowTitle('Maps')
 
         self.theme = QCheckBox(self)
@@ -68,11 +70,18 @@ class BigMaps(QMainWindow):
         self.adress.resize(600, 40)
         self.adress.move(10, 530)
 
+        self.organization = QLabel(self)
+        self.organization.setText('Организация: ')
+        self.organization.setWordWrap(True)
+        self.organization.resize(600, 40)
+        self.organization.move(10, 580)
+
         self.lon, self.latt = 37.620431, 55.753789
         self.spn = [0.0014, 0.0014]
         self.pt = ''
         self.map_api_server = 'https://static-maps.yandex.ru/v1?'
         self.geocoder_api_server = "http://geocode-maps.yandex.ru/1.x/"
+        self.search_api_server = "https://search-maps.yandex.ru/v1/"
         self.map_file = "map.png"
 
         self.picture = QLabel(self)
@@ -149,6 +158,7 @@ class BigMaps(QMainWindow):
         self.search_data.clear()
         self.search_data.clearFocus()
         self.adress.setText('Адресс: ')
+        self.organization.setText('Организация: ')
         self.pt = ''
         self.index = ''
         self.show_map()
@@ -188,7 +198,8 @@ class BigMaps(QMainWindow):
 
     def mousePressEvent(self, event):
         self.search_data.clearFocus()
-        if event.button() == Qt.MouseButton.LeftButton:
+        button = event.button()
+        if button in [Qt.MouseButton.LeftButton, Qt.MouseButton.RightButton]:
             if event.pos().x() <= 610 and event.pos().y() <= 455:
                 x = event.pos().x() - 10
                 y = event.pos().y() - 5
@@ -215,9 +226,10 @@ class BigMaps(QMainWindow):
                 lo = self.lon - self.spn[0] * 2.3
                 la = self.latt + self.spn[1]
                 self.pt = f'{lo + left_move},{la - upper_move}'
-                self.find_place()
-        elif event.button() == Qt.MouseButton.RightButton:
-            pass
+                if button == Qt.MouseButton.LeftButton:
+                    self.find_place()
+                else:
+                    self.find_organization()
 
     def find_place(self):
         toponym_to_find = self.pt
@@ -247,6 +259,41 @@ class BigMaps(QMainWindow):
             self.clear_search_data()
 
         self.search_data.clearFocus()
+
+    def find_organization(self):
+        toponym_to_find = self.pt
+
+        geocoder_params = {
+            "apikey": "8013b162-6b42-4997-9691-77b7074026e0",
+            "geocode": toponym_to_find,
+            "format": "json"}
+
+        response = requests.get(self.geocoder_api_server, params=geocoder_params)
+
+        if response and response.json()["response"]["GeoObjectCollection"]["featureMember"]:
+            json_response = response.json()
+            toponym = json_response["response"]["GeoObjectCollection"]["featureMember"][0]["GeoObject"]
+            adress = toponym['metaDataProperty']['GeocoderMetaData']['text']
+            search_params = {
+                "apikey": "dda3ddba-c9ea-4ead-9010-f43fbc15c6e3",
+                "text": adress,
+                "lang": "ru_RU",
+                "type": "biz"
+            }
+
+            response = requests.get(self.search_api_server, params=search_params)
+            if response:
+                json_response = response.json()
+                searching_coord = [float(i) for i in self.pt.split(',')]
+                for i in json_response['features']:
+                    curr_coords = i['geometry']['coordinates']
+                    if lonlat_distance(searching_coord, curr_coords) <= 50:
+                        self.clear_search_data()
+                        self.pt = ','.join([str(i) for i in curr_coords])
+                        self.adress.setText(f'Адресс: {i["properties"]["CompanyMetaData"]["address"]}')
+                        self.organization.setText(f'Организация: {i["properties"]["CompanyMetaData"]["name"]}')
+                        self.show_map()
+                        break
 
     def closeEvent(self, event):
         os.remove(self.map_file)
