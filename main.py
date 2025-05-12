@@ -1,8 +1,7 @@
 import os
-import pprint
+import math
 import sys
 import requests
-from distance import lonlat_distance
 
 from PyQt6.QtGui import QPixmap
 from PyQt6.QtCore import Qt
@@ -29,6 +28,22 @@ def find_scale(json_res):
         return 360 - l_corner[0] + u_corner[0], u_corner[1] - l_corner[1]
     else:
         return u_corner[0] - l_corner[0], u_corner[1] - l_corner[1]
+
+
+def lonlat_distance(a, b):
+    degree_to_meters_factor = 111 * 1000
+    a_lon, a_lat = a
+    b_lon, b_lat = b
+
+    radians_lattitude = math.radians((a_lat + b_lat) / 2.)
+    lat_lon_factor = math.cos(radians_lattitude)
+
+    dx = abs(a_lon - b_lon) * degree_to_meters_factor * lat_lon_factor
+    dy = abs(a_lat - b_lat) * degree_to_meters_factor
+
+    distance = math.sqrt(dx * dx + dy * dy)
+
+    return distance
 
 
 class BigMaps(QMainWindow):
@@ -119,6 +134,8 @@ class BigMaps(QMainWindow):
             self.adress.setText(','.join(self.adress.text().split(',')[:-1]))
 
     def search(self):
+        self.organization.setText('Организация: ')
+
         toponym_to_find = self.search_data.text()
 
         geocoder_params = {
@@ -141,8 +158,11 @@ class BigMaps(QMainWindow):
             toponym_longitude, toponym_lattitude = toponym_coodrinates.split(" ")
             self.lon = float(toponym_longitude)
             self.latt = float(toponym_lattitude)
-
-            self.spn = list(find_scale(json_response))
+            goal = list(find_scale(json_response))
+            self.spn = [0.0007, 0.0007]
+            while self.spn[0] * 2 < goal[0]:
+                self.spn[0] *= 2
+                self.spn[1] *= 2
             self.pt = f'{self.lon},{self.latt}'
             if self.mail_index.isChecked() and self.index:
                 self.adress.setText(f'Адресс: {adress}{self.index}')
@@ -204,23 +224,25 @@ class BigMaps(QMainWindow):
                 x = event.pos().x() - 10
                 y = event.pos().y() - 5
                 if x <= 100:
-                    koef_l = 4.53
+                    koef_l = 4.56
                 elif x <= 200:
                     koef_l = 4.6
                 elif x <= 300:
-                    koef_l = 4.65
-                elif x <= 400:
                     koef_l = 4.64
+                elif x <= 400:
+                    koef_l = 4.61
                 elif x <= 500:
-                    koef_l = 4.63
+                    koef_l = 4.62
                 else:
-                    koef_l = 4.63
-                if y <= 150:
-                    koef_u = 2.02
-                elif y <= 300:
-                    koef_u = 2
-                else:
+                    koef_l = 4.615
+                if y <= 113:
+                    koef_u = 2.06
+                elif y <= 226:
                     koef_u = 1.97
+                elif y <= 339:
+                    koef_u = 1.97
+                else:
+                    koef_u = 1.959
                 left_move = (x / 600) * self.spn[0] * koef_l
                 upper_move = (y / 450) * self.spn[1] * koef_u
                 lo = self.lon - self.spn[0] * 2.3
@@ -232,6 +254,8 @@ class BigMaps(QMainWindow):
                     self.find_organization()
 
     def find_place(self):
+        self.organization.setText('Организация: ')
+
         toponym_to_find = self.pt
 
         geocoder_params = {
@@ -262,6 +286,7 @@ class BigMaps(QMainWindow):
 
     def find_organization(self):
         toponym_to_find = self.pt
+        self.index = ''
 
         geocoder_params = {
             "apikey": "8013b162-6b42-4997-9691-77b7074026e0",
@@ -285,15 +310,26 @@ class BigMaps(QMainWindow):
             if response:
                 json_response = response.json()
                 searching_coord = [float(i) for i in self.pt.split(',')]
+                hl = []
                 for i in json_response['features']:
                     curr_coords = i['geometry']['coordinates']
                     if lonlat_distance(searching_coord, curr_coords) <= 50:
-                        self.clear_search_data()
-                        self.pt = ','.join([str(i) for i in curr_coords])
-                        self.adress.setText(f'Адресс: {i["properties"]["CompanyMetaData"]["address"]}')
-                        self.organization.setText(f'Организация: {i["properties"]["CompanyMetaData"]["name"]}')
-                        self.show_map()
-                        break
+                        hl.append((','.join([str(i) for i in curr_coords]),
+                                   f'Адресс: {i["properties"]["CompanyMetaData"]["address"]}',
+                                   f'Организация: {i["properties"]["CompanyMetaData"]["name"]}',
+                                   lonlat_distance(searching_coord, curr_coords)))
+                if hl:
+                    hl.sort(key=lambda x: x[-1])
+                    self.pt = hl[0][0]
+                    self.adress.setText(hl[0][1])
+                    self.organization.setText(hl[0][2])
+                    self.show_map()
+                else:
+                    self.clear_search_data()
+            else:
+                self.clear_search_data()
+
+        self.search_data.clearFocus()
 
     def closeEvent(self, event):
         os.remove(self.map_file)
