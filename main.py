@@ -56,11 +56,13 @@ class BigMaps(QMainWindow):
         self.theme = QCheckBox(self)
         self.theme.setText('Темная тема')
         self.theme.move(10, 460)
+        self.theme.setFocusPolicy(Qt.FocusPolicy.NoFocus)
 
         self.mail_index = QCheckBox(self)
         self.mail_index.setText('Почтовый индекс')
         self.mail_index.resize(140, 30)
         self.mail_index.move(140, 460)
+        self.mail_index.setFocusPolicy(Qt.FocusPolicy.NoFocus)
 
         self.index = ''
 
@@ -73,11 +75,13 @@ class BigMaps(QMainWindow):
         self.search_button.setText('Искать')
         self.search_button.resize(75, 20)
         self.search_button.move(325, 500)
+        self.search_button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
 
         self.clear_button = QPushButton(self)
         self.clear_button.setText('Сброс поискового результата')
         self.clear_button.resize(200, 20)
         self.clear_button.move(410, 500)
+        self.clear_button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
 
         self.adress = QLabel(self)
         self.adress.setText('Адресс: ')
