@@ -2,16 +2,50 @@ import os
 import math
 import sys
 import requests
-
 from PyQt6.QtGui import QPixmap
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QApplication, QMainWindow, QLabel, QCheckBox, QLineEdit, QPushButton
 
 
-def find_scale(json_res):
-    geoobj_toponym = json_res["response"]["GeoObjectCollection"]["featureMember"][0]["GeoObject"]
-    l_corner = [float(i) for i in geoobj_toponym['boundedBy']['Envelope']['lowerCorner'].split()]
-    u_corner = [float(i) for i in geoobj_toponym['boundedBy']['Envelope']['upperCorner'].split()]
+width = 600
+height = 450
+tile_size = 256
+for_finding_z = [(0.0004023313522338867, 0.00016980905591168494), (0.0008046627044677734, 0.00033961811182336987),
+                 (0.0016093254089355469, 0.0006792362236325289), (0.0032186508178710938, 0.001358472447300585),
+                 (0.0064373016357421875, 0.0027169448948285435), (0.012874603271484375, 0.005433889791419233),
+                 (0.02574920654296875, 0.010867779596985372), (0.0514984130859375, 0.02173555930714599),
+                 (0.102996826171875, 0.04347111951959448), (0.20599365234375, 0.08694224628165159),
+                 (0.4119873046875, 0.17388455050288343), (0.823974609375, 0.3477695645174208),
+                 (1.64794921875, 0.6955428369666947), (3.2958984375, 1.3911153322228529),
+                 (6.591796875, 2.7824677654778824), (13.18359375, 5.566827051651323),
+                 (26.3671875, 11.148617264642724), (52.734375, 22.411559410911394),
+                 (105.46875, 45.570219490338815), (210.9375, 92.70401327222598),
+                 (421.87499999999994, 154.5763237708369), (843.75, 178.37247810249727)]
+
+
+def find_lon_lat(pixel_x, pixel_y, center_lon, center_lat, z):
+    radians_lat = math.radians(center_lat)
+    k_tiles = 2 ** z
+    center_tile_x = (center_lon + 180) / 360 * k_tiles
+    center_tile_y = (1 - math.asinh(math.tan(radians_lat)) / math.pi) / 2 * k_tiles
+
+    pixel_move_x = pixel_x - width / 2
+    pixel_move_y = pixel_y - height / 2
+
+    tile_move_x = pixel_move_x / tile_size
+    tile_move_y = pixel_move_y / tile_size
+
+    target_tile_x = (center_tile_x + tile_move_x) % k_tiles
+    target_tile_y = (center_tile_y + tile_move_y) % k_tiles
+
+    lon = target_tile_x / k_tiles * 360 - 180
+    radians_lat = math.atan(math.sinh(math.pi * (1 - 2 * target_tile_y / k_tiles)))
+    lat = math.degrees(radians_lat)
+
+    return [lon, lat]
+
+
+def find_scale(l_corner, u_corner):
     if l_corner[0] > 180:
         l_corner[0] -= 360
     elif l_corner[0] < -180:
@@ -96,8 +130,11 @@ class BigMaps(QMainWindow):
         self.organization.move(10, 580)
 
         self.lon, self.latt = 37.620431, 55.753789
-        self.spn = [0.0014, 0.0014]
+        self.z = 17
         self.pt = ''
+        down_left = find_lon_lat(0, 450, self.lon, self.latt, self.z)
+        up_right = find_lon_lat(600, 0, self.lon, self.latt, self.z)
+        self.lon_move, self.latt_move = [abs(i / 3) for i in find_scale(down_left, up_right)]
         self.map_api_server = 'https://static-maps.yandex.ru/v1?'
         self.geocoder_api_server = "http://geocode-maps.yandex.ru/1.x/"
         self.search_api_server = "https://search-maps.yandex.ru/v1/"
@@ -118,7 +155,7 @@ class BigMaps(QMainWindow):
     def show_map(self):
         map_params = {
             "ll": f'{self.lon},{self.latt}',
-            "spn": f'{self.spn[0]},{self.spn[1]}',
+            "z": f'{self.z}',
             "apikey": "f3a0fe3a-b07e-4840-a1da-06f18b2ddf13",
             'theme': 'dark' if self.theme.isChecked() else 'light',
             'pt': self.pt
@@ -162,12 +199,17 @@ class BigMaps(QMainWindow):
             toponym_longitude, toponym_lattitude = toponym_coodrinates.split(" ")
             self.lon = float(toponym_longitude)
             self.latt = float(toponym_lattitude)
-            goal = list(find_scale(json_response))
-            self.spn = [0.0007, 0.0007]
-            while self.spn[0] * 2 < goal[0]:
-                self.spn[0] *= 2
-                self.spn[1] *= 2
             self.pt = f'{self.lon},{self.latt}'
+            l_c = [float(i) for i in toponym['boundedBy']['Envelope']['lowerCorner'].split()]
+            u_c = [float(i) for i in toponym['boundedBy']['Envelope']['upperCorner'].split()]
+            lon_width, lat_width = find_scale(l_c, u_c)
+            for i in range(len(for_finding_z)):
+                if for_finding_z[i][0] >= lon_width and for_finding_z[i][1] >= lat_width:
+                    self.z = 21 - i
+                    break
+            down_left = find_lon_lat(0, 450, self.lon, self.latt, self.z)
+            up_right = find_lon_lat(600, 0, self.lon, self.latt, self.z)
+            self.lon_move, self.latt_move = [abs(i / 3) for i in find_scale(down_left, up_right)]
             if self.mail_index.isChecked() and self.index:
                 self.adress.setText(f'Адресс: {adress}{self.index}')
             else:
@@ -189,69 +231,47 @@ class BigMaps(QMainWindow):
 
     def keyPressEvent(self, event):
         if event.key() == Qt.Key.Key_PageUp:
-            if self.spn[0] * 2 <= 45:
-                self.spn[0] *= 2
-                self.spn[1] *= 2
+            if self.z > 0:
+                self.z -= 1
+            down_left = find_lon_lat(0, 450, self.lon, self.latt, self.z)
+            up_right = find_lon_lat(600, 0, self.lon, self.latt, self.z)
+            self.lon_move, self.latt_move = [abs(i / 3) for i in find_scale(down_left, up_right)]
             self.show_map()
         elif event.key() == Qt.Key.Key_PageDown:
-            if self.spn[0] / 2 >= 0.0007 and self.spn[1] / 2 >= 0.0007:
-                self.spn[0] /= 2
-                self.spn[1] /= 2
-            else:
-                self.spn[0] = 0.0007
-                self.spn[1] = 0.0007
+            if self.z < 21:
+                self.z += 1
+            down_left = find_lon_lat(0, 450, self.lon, self.latt, self.z)
+            up_right = find_lon_lat(600, 0, self.lon, self.latt, self.z)
+            self.lon_move, self.latt_move = [abs(i / 3) for i in find_scale(down_left, up_right)]
             self.show_map()
         elif event.key() == Qt.Key.Key_Left:
-            self.lon -= self.spn[0] / 2
+            self.lon -= self.lon_move
             if self.lon < -180:
                 self.lon += 360
             self.show_map()
         elif event.key() == Qt.Key.Key_Right:
-            self.lon += self.spn[0] / 2
+            self.lon += self.lon_move
             if self.lon > 180:
                 self.lon -= 360
             self.show_map()
         elif event.key() == Qt.Key.Key_Up:
-            if self.latt + self.spn[1] / 2 <= 84:
-                self.latt += self.spn[1] / 2
+            if self.latt + self.latt_move <= 84:
+                self.latt += self.latt_move
             self.show_map()
         elif event.key() == Qt.Key.Key_Down:
-            if self.latt - self.spn[1] / 2 >= -84:
-                self.latt -= self.spn[1] / 2
+            if self.latt - self.latt_move >= -84:
+                self.latt -= self.latt_move
             self.show_map()
 
     def mousePressEvent(self, event):
         self.search_data.clearFocus()
         button = event.button()
         if button in [Qt.MouseButton.LeftButton, Qt.MouseButton.RightButton]:
-            if event.pos().x() <= 610 and event.pos().y() <= 455:
-                x = event.pos().x() - 10
-                y = event.pos().y() - 5
-                if x <= 100:
-                    koef_l = 4.56
-                elif x <= 200:
-                    koef_l = 4.6
-                elif x <= 300:
-                    koef_l = 4.64
-                elif x <= 400:
-                    koef_l = 4.61
-                elif x <= 500:
-                    koef_l = 4.62
-                else:
-                    koef_l = 4.615
-                if y <= 113:
-                    koef_u = 2.06
-                elif y <= 226:
-                    koef_u = 1.97
-                elif y <= 339:
-                    koef_u = 1.97
-                else:
-                    koef_u = 1.959
-                left_move = (x / 600) * self.spn[0] * koef_l
-                upper_move = (y / 450) * self.spn[1] * koef_u
-                lo = self.lon - self.spn[0] * 2.3
-                la = self.latt + self.spn[1]
-                self.pt = f'{lo + left_move},{la - upper_move}'
+            x = event.pos().x() - 10
+            y = event.pos().y() - 5
+            if 0 <= x <= 600 and 0 <= y <= 450:
+                lon, lat = find_lon_lat(x, y, self.lon, self.latt, self.z)
+                self.pt = f'{lon},{lat}'
                 if button == Qt.MouseButton.LeftButton:
                     self.find_place()
                 else:
